@@ -1,6 +1,7 @@
-import { pipeline, TextGenerationPipeline } from '@xenova/transformers';
+import { pipeline } from '@xenova/transformers';
 
-let generator: TextGenerationPipeline | null = null;
+// No explicit type; let TypeScript infer the pipeline type
+let generator: any = null;
 let loading = false;
 let loadPromise: Promise<void> | null = null;
 
@@ -9,11 +10,7 @@ export async function loadModel(): Promise<void> {
   if (loading && loadPromise) return loadPromise;
   loading = true;
   loadPromise = (async () => {
-    // Use a small instruction-tuned model
-    generator = await pipeline('text2text-generation', 'Xenova/LaMini-Flan-T5-77M', {
-      // Use local cache, no external API calls after first load
-      cache_dir: undefined,
-    });
+    generator = await pipeline('text2text-generation', 'Xenova/LaMini-Flan-T5-77M');
     loading = false;
   })();
   return loadPromise;
@@ -23,28 +20,31 @@ export async function generateResponse(userMessage: string, userName?: string): 
   if (!generator) {
     await loadModel();
   }
-  // Build a prompt that mimics a helpful assistant
+
   const prompt = `You are ANAI, a highly intelligent AI assistant created by Ankita Banerjee. You are helpful, friendly, and concise. Answer the following question or respond to the statement naturally.\n\nUser${userName ? ` (${userName})` : ''}: ${userMessage}\nANAI:`;
-  
-  const result = await generator!(prompt, {
-    max_new_tokens: 150,
-    temperature: 0.7,
-    top_p: 0.9,
-    do_sample: true,
-    repetition_penalty: 1.1,
-  });
-  
-  let text = result[0].generated_text;
-  // Remove the prompt from the generated text if present
-  if (text.startsWith(prompt)) {
-    text = text.slice(prompt.length).trim();
+
+  try {
+    const result = await generator(prompt, {
+      max_new_tokens: 150,
+      temperature: 0.7,
+      top_p: 0.9,
+      do_sample: true,
+      repetition_penalty: 1.1,
+    });
+
+    let text = result[0].generated_text;
+    if (text.startsWith(prompt)) {
+      text = text.slice(prompt.length).trim();
+    }
+    text = text.replace(/^ANAI:\s*/, '').trim();
+    return text || "I'm not sure how to respond to that, but I'm learning!";
+  } catch (error) {
+    console.error('Generation error:', error);
+    return "Sorry, I had a temporary glitch. Could you try again?";
   }
-  // Clean up
-  text = text.replace(/^ANAI:\s*/, '').trim();
-  return text || "I'm not sure how to respond to that, but I'm learning!";
 }
 
-// Fallback rule-based responses for very common inputs (for speed)
+// Quick rule‑based fallbacks
 const quickResponses: Record<string, string> = {
   'hello': "Hello! I'm ANAI, running fully on-device with a real transformer model. How can I help?",
   'hi': "Hey there! What can I do for you?",
