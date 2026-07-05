@@ -2,7 +2,6 @@
 import { useState, useRef, useEffect } from 'react';
 import ChatMessage from '@/components/ChatMessage';
 import ChatInput from '@/components/ChatInput';
-import { loadModel, generateResponse, quickResponse } from '@/lib/ai-model';
 import { getMemory, setUserName, addMessage, extractName } from '@/lib/memory';
 import { Sparkles, Brain } from 'lucide-react';
 
@@ -12,9 +11,15 @@ export default function ChatPage() {
   const [modelReady, setModelReady] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Preload the model
+  // Preload the model only in the browser (dynamic import)
   useEffect(() => {
-    loadModel().then(() => setModelReady(true));
+    let cancelled = false;
+    (async () => {
+      const { loadModel } = await import('@/lib/ai-model');
+      await loadModel();
+      if (!cancelled) setModelReady(true);
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -38,7 +43,9 @@ export default function ChatPage() {
       return;
     }
 
-    // Use quick response if possible
+    // Dynamically import AI functions only when needed
+    const { quickResponse, generateResponse } = await import('@/lib/ai-model');
+
     const quick = quickResponse(text);
     if (quick) {
       setMessages(prev => [...prev, { role: 'assistant', content: quick }]);
@@ -47,9 +54,8 @@ export default function ChatPage() {
       return;
     }
 
-    // Otherwise, generate with the real model
     if (!modelReady) {
-      const fallback = "I'm still loading my neural network. Please wait a moment...";
+      const fallback = "I'm still loading my neural network. Please wait...";
       setMessages(prev => [...prev, { role: 'assistant', content: fallback }]);
       addMessage(fallback);
       setIsProcessing(false);
@@ -61,7 +67,7 @@ export default function ChatPage() {
       setMessages(prev => [...prev, { role: 'assistant', content: response }]);
       addMessage(response);
     } catch (err) {
-      setMessages(prev => [...prev, { role: 'assistant', content: "Sorry, I encountered an error. Please try again." }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: "Sorry, I encountered an error." }]);
     }
     setIsProcessing(false);
   };
